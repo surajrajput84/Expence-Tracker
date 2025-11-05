@@ -19,16 +19,23 @@ import {
   Cell,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 
-const COLORS = ["#0088FE", "#FF4444", "#00C49F", "#FFBB28", "#FF8042"];
+const COLORS = ["#4caf50", "#f44336", "#007bff", "#ff9800"];
 
 function Dashboard({ user }) {
   const [transactions, setTransactions] = useState([]);
   const [monthFilter, setMonthFilter] = useState(new Date().getMonth() + 1);
-  const [summary, setSummary] = useState({ income: 0, expense: 0, balance: 0 });
+  const [yearFilter, setYearFilter] = useState(new Date().getFullYear());
+  const [summary, setSummary] = useState({
+    income: 0,
+    expense: 0,
+    loanGiven: 0,
+    debtTaken: 0,
+    balance: 0,
+  });
 
-  // 🔥 Real-time fetch of transactions for logged-in user
   useEffect(() => {
     const q = query(
       collection(db, "transactions"),
@@ -42,15 +49,18 @@ function Dashboard({ user }) {
         ...doc.data(),
       }));
 
-      // ✅ Filter by selected month
       const filtered = allData.filter((t) => {
         const d = t.date?.toDate?.() || t.createdAt?.toDate?.();
-        return d && d.getMonth() + 1 === Number(monthFilter);
+        return (
+          d &&
+          d.getMonth() + 1 === Number(monthFilter) &&
+          d.getFullYear() === Number(yearFilter)
+        );
       });
 
       setTransactions(filtered);
 
-      // ✅ Calculate totals
+      // 💰 Calculate totals
       const income = filtered
         .filter((t) => t.type === "income")
         .reduce((sum, t) => sum + Number(t.amount), 0);
@@ -59,17 +69,26 @@ function Dashboard({ user }) {
         .filter((t) => t.type === "expense")
         .reduce((sum, t) => sum + Number(t.amount), 0);
 
+      const loanGiven = filtered
+        .filter((t) => t.type === "loan" && t.loanType === "given")
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      const debtTaken = filtered
+        .filter((t) => t.type === "loan" && t.loanType === "taken")
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
       setSummary({
         income,
         expense,
-        balance: income - expense,
+        loanGiven,
+        debtTaken,
+        balance: income - expense - debtTaken + loanGiven,
       });
     });
 
     return unsubscribe;
-  }, [user.uid, monthFilter]);
+  }, [user.uid, monthFilter, yearFilter]);
 
-  // ➕ Add transaction (called inside AddTransaction)
   const handleAddTransaction = async (transaction) => {
     try {
       await addDoc(collection(db, "transactions"), {
@@ -84,7 +103,6 @@ function Dashboard({ user }) {
     }
   };
 
-  // 🚪 Logout function
   const handleLogout = () => {
     signOut(auth);
   };
@@ -92,80 +110,125 @@ function Dashboard({ user }) {
   const pieData = [
     { name: "Income", value: summary.income },
     { name: "Expense", value: summary.expense },
+    { name: "Loan Given", value: summary.loanGiven },
+    { name: "Debt Taken", value: summary.debtTaken },
   ];
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Welcome, {user.displayName || user.email}</h2>
-      <button
-        onClick={handleLogout}
-        style={{
-          background: "#dc3545",
-          color: "#fff",
-          border: "none",
-          padding: "8px 14px",
-          borderRadius: 6,
-          cursor: "pointer",
-          marginBottom: 20,
-        }}
-      >
-        Logout
-      </button>
-
-      {/* ➕ Add Transaction Form (now passes user) */}
-      <AddTransaction user={user} onAdd={handleAddTransaction} />
-
-      {/* 🔎 Month Filter */}
-      <div style={{ marginTop: 20 }}>
-        <label>
-          Filter by Month:
-          <select
-            value={monthFilter}
-            onChange={(e) => setMonthFilter(e.target.value)}
-            style={{
-              marginLeft: 10,
-              padding: 5,
-              borderRadius: 6,
-              border: "1px solid #ccc",
-            }}
-          >
-            {[...Array(12).keys()].map((m) => (
-              <option key={m + 1} value={m + 1}>
-                {new Date(0, m).toLocaleString("default", { month: "long" })}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {/* 💰 Monthly Summary */}
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "linear-gradient(135deg, #e0f7fa, #f1f8e9)",
+        padding: "30px 10%",
+      }}
+    >
+      {/* Header */}
       <div
         style={{
           display: "flex",
-          gap: 20,
-          marginTop: 20,
-          background: "#f8f9fa",
-          padding: 20,
-          borderRadius: 8,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-          flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
         }}
       >
-        <div style={summaryCard}>
-          <h4>Total Income</h4>
-          <p style={{ color: "green", fontSize: 20 }}>₹{summary.income}</p>
+        <h2 style={{ color: "#333" }}>
+          Welcome,{" "}
+          <span style={{ color: "#007bff" }}>
+            {user.displayName || user.email}
+          </span>
+        </h2>
+        <button
+          onClick={handleLogout}
+          style={{
+            background: "linear-gradient(45deg, #ff4e50, #f9d423)",
+            color: "#fff",
+            border: "none",
+            padding: "8px 16px",
+            borderRadius: 8,
+            cursor: "pointer",
+            fontWeight: 600,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+          }}
+        >
+          Logout
+        </button>
+      </div>
+
+      {/* Add Transaction */}
+      <AddTransaction user={user} onAdd={handleAddTransaction} />
+
+      {/* Month + Year Filter */}
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          background: "#fff",
+          padding: "12px 16px",
+          borderRadius: 10,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+          marginBottom: 20,
+        }}
+      >
+        <label style={{ fontWeight: 600 }}>Filter:</label>
+        <select
+          value={monthFilter}
+          onChange={(e) => setMonthFilter(e.target.value)}
+          style={filterStyle}
+        >
+          {[...Array(12).keys()].map((m) => (
+            <option key={m + 1} value={m + 1}>
+              {new Date(0, m).toLocaleString("default", { month: "long" })}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={yearFilter}
+          onChange={(e) => setYearFilter(e.target.value)}
+          style={filterStyle}
+        >
+          {[2023, 2024, 2025, 2026].map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Summary Cards */}
+      <div style={summaryContainer}>
+        <div style={{ ...summaryCard, borderTop: "4px solid #4caf50" }}>
+          <h4>Income</h4>
+          <p style={{ color: "#4caf50", fontSize: 22, fontWeight: 700 }}>
+            ₹{summary.income}
+          </p>
         </div>
-        <div style={summaryCard}>
-          <h4>Total Expense</h4>
-          <p style={{ color: "red", fontSize: 20 }}>₹{summary.expense}</p>
+        <div style={{ ...summaryCard, borderTop: "4px solid #f44336" }}>
+          <h4>Expense</h4>
+          <p style={{ color: "#f44336", fontSize: 22, fontWeight: 700 }}>
+            ₹{summary.expense}
+          </p>
         </div>
-        <div style={summaryCard}>
+        <div style={{ ...summaryCard, borderTop: "4px solid #007bff" }}>
+          <h4>Loan Given</h4>
+          <p style={{ color: "#007bff", fontSize: 22, fontWeight: 700 }}>
+            ₹{summary.loanGiven}
+          </p>
+        </div>
+        <div style={{ ...summaryCard, borderTop: "4px solid #ff9800" }}>
+          <h4>Debt Taken</h4>
+          <p style={{ color: "#ff9800", fontSize: 22, fontWeight: 700 }}>
+            ₹{summary.debtTaken}
+          </p>
+        </div>
+        <div style={{ ...summaryCard, borderTop: "4px solid #2196f3" }}>
           <h4>Balance</h4>
           <p
             style={{
-              color: summary.balance >= 0 ? "green" : "red",
-              fontSize: 20,
-              fontWeight: 600,
+              color: summary.balance >= 0 ? "#4caf50" : "#f44336",
+              fontSize: 22,
+              fontWeight: 700,
             }}
           >
             ₹{summary.balance}
@@ -173,18 +236,18 @@ function Dashboard({ user }) {
         </div>
       </div>
 
-      {/* 📊 Income vs Expense Chart */}
+      {/* Chart */}
       <div
         style={{
-          background: "#fff",
-          borderRadius: 8,
+          background: "rgba(255, 255, 255, 0.9)",
+          borderRadius: 12,
           padding: 20,
-          marginTop: 20,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-          height: 300,
+          marginTop: 30,
+          boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
+          height: 320,
         }}
       >
-        <h3>Income vs Expense</h3>
+        <h3>Income vs Expense vs Loan/Debt</h3>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -202,23 +265,42 @@ function Dashboard({ user }) {
               ))}
             </Pie>
             <Tooltip />
+            <Legend />
           </PieChart>
         </ResponsiveContainer>
       </div>
 
-      {/* 📋 Transaction List */}
-      <ExpenseList transactions={transactions} />
+      {/* Transaction List */}
+      <div style={{ marginTop: 30 }}>
+        <ExpenseList transactions={transactions} />
+      </div>
     </div>
   );
 }
 
+const filterStyle = {
+  padding: "8px 10px",
+  borderRadius: 6,
+  border: "1px solid #ccc",
+  background: "#f8f9fa",
+  fontWeight: 500,
+};
+
+const summaryContainer = {
+  display: "flex",
+  gap: 20,
+  flexWrap: "wrap",
+  justifyContent: "center",
+  marginTop: 10,
+};
+
 const summaryCard = {
-  flex: 1,
+  flex: "1 1 220px",
   textAlign: "center",
-  background: "#fff",
-  padding: "10px 0",
-  borderRadius: 8,
-  boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+  background: "rgba(255,255,255,0.95)",
+  padding: "18px 0",
+  borderRadius: 12,
+  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
 };
 
 export default Dashboard;
